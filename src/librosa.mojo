@@ -1,6 +1,6 @@
 """Numerical kernels for mojo-librosa's C ABI."""
 
-from std.algorithm import parallelize
+from std.algorithm import map
 from std.math import cos, exp, floor, log, pow, sin, sqrt
 from std.runtime import initialize_runtime
 from std.sys.info import simd_width_of as simdwidthof
@@ -102,7 +102,7 @@ def mls_stft(
         stft_frame(y, window, dst, index, n_samples, n_frames, n_fft, hop_length)
 
     if count * n_fft >= 131072:
-        parallelize[work](count)
+        map[work](count)
     else:
         for index in range(count):
             work(index)
@@ -192,7 +192,7 @@ def mls_project(
         project_row(matrix, src, dst, index, rows, inner, columns)
 
     if count >= 64 and inner * columns >= 32768:
-        parallelize[work](count)
+        map[work](count)
     else:
         for index in range(count):
             work(index)
@@ -218,7 +218,7 @@ def mls_project_f32(
         project_row_f32(matrix, src, dst, index, rows, inner, columns)
 
     if count >= 64 and inner * columns >= 32768:
-        parallelize[work](count)
+        map[work](count)
     else:
         for index in range(count):
             work(index)
@@ -301,7 +301,7 @@ def mls_resample(
             for index in range(first, last):
                 work_item(index)
 
-        parallelize[work_chunk](chunks)
+        map[work_chunk](chunks)
     else:
         for index in range(count):
             work_item(index)
@@ -378,7 +378,7 @@ def mls_resample_f32(
             for index in range(first, last):
                 work_item(index)
 
-        parallelize[work_chunk](chunks)
+        map[work_chunk](chunks)
     else:
         for index in range(count):
             work_item(index)
@@ -485,7 +485,7 @@ def mls_beat_dp(
             for i in range(first, last):
                 local_score(i)
 
-        parallelize[local_chunk](chunks)
+        map[local_chunk](chunks)
     else:
         for i in range(n):
             local_score(i)
