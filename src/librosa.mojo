@@ -1,6 +1,6 @@
 """Numerical kernels for mojo-librosa's C ABI."""
 
-from std.algorithm import map
+from std.algorithm import parallelize
 from std.math import cos, exp, floor, log, pow, sin, sqrt
 from std.runtime import initialize_runtime
 from std.sys.info import simd_width_of as simdwidthof
@@ -102,7 +102,7 @@ def mls_stft(
         stft_frame(y, window, dst, index, n_samples, n_frames, n_fft, hop_length)
 
     if count * n_fft >= 131072:
-        map[work](count)
+        parallelize[work](count)
     else:
         for index in range(count):
             work(index)
@@ -121,9 +121,15 @@ def project_row(
     var r = index - b * rows
     var src_batch = src + b * inner * columns
     var dst_row = dst + (b * rows + r) * columns
+    var first = 0
+    while first < inner and matrix[r * inner + first] == 0.0:
+        first += 1
+    var last = inner
+    while last > first and matrix[r * inner + last - 1] == 0.0:
+        last -= 1
     for c in range(columns):
         dst_row[c] = 0.0
-    for k in range(inner):
+    for k in range(first, last):
         var weight = matrix[r * inner + k]
         var src_row = src_batch + k * columns
         var vw = SIMD[DType.float64, W](weight)
@@ -152,9 +158,15 @@ def project_row_f32(
     var r = index - b * rows
     var src_batch = src + b * inner * columns
     var dst_row = dst + (b * rows + r) * columns
+    var first = 0
+    while first < inner and matrix[r * inner + first] == 0.0:
+        first += 1
+    var last = inner
+    while last > first and matrix[r * inner + last - 1] == 0.0:
+        last -= 1
     for c in range(columns):
         dst_row[c] = 0.0
-    for k in range(inner):
+    for k in range(first, last):
         var weight = matrix[r * inner + k]
         var src_row = src_batch + k * columns
         var vw = SIMD[DType.float32, W32](weight)
@@ -192,7 +204,7 @@ def mls_project(
         project_row(matrix, src, dst, index, rows, inner, columns)
 
     if count >= 64 and inner * columns >= 32768:
-        map[work](count)
+        parallelize[work](count)
     else:
         for index in range(count):
             work(index)
@@ -218,7 +230,7 @@ def mls_project_f32(
         project_row_f32(matrix, src, dst, index, rows, inner, columns)
 
     if count >= 64 and inner * columns >= 32768:
-        map[work](count)
+        parallelize[work](count)
     else:
         for index in range(count):
             work(index)
@@ -252,10 +264,13 @@ def mls_resample(
     def work_item(index: Int):
         var channel = index // n_out
         var i = index - channel * n_out
-        var phase = i % phase_count
-        var cycle = i // phase_count
-        var phase_numerator = phase * input_step
-        var base = cycle * input_step + phase_numerator // phase_count
+        var phase = 0
+        var base = i * input_step
+        if phase_count != 1:
+            phase = i % phase_count
+            var cycle = i // phase_count
+            var phase_numerator = phase * input_step
+            base = cycle * input_step + phase_numerator // phase_count
         var left = base - radius
         var weight_row = weights + phase * kernel_width
         var acc = 0.0
@@ -291,7 +306,7 @@ def mls_resample(
                     acc += y[channel * n_in + source_index] * weight_row[k]
         dst[index] = acc
 
-    if count * kernel_width >= 262144:
+    if count >= 262144 and count * kernel_width >= 262144:
         var chunks = (count + 255) // 256
 
         @parameter
@@ -301,7 +316,7 @@ def mls_resample(
             for index in range(first, last):
                 work_item(index)
 
-        map[work_chunk](chunks)
+        parallelize[work_chunk](chunks)
     else:
         for index in range(count):
             work_item(index)
@@ -329,10 +344,13 @@ def mls_resample_f32(
     def work_item(index: Int):
         var channel = index // n_out
         var i = index - channel * n_out
-        var phase = i % phase_count
-        var cycle = i // phase_count
-        var phase_numerator = phase * input_step
-        var base = cycle * input_step + phase_numerator // phase_count
+        var phase = 0
+        var base = i * input_step
+        if phase_count != 1:
+            phase = i % phase_count
+            var cycle = i // phase_count
+            var phase_numerator = phase * input_step
+            base = cycle * input_step + phase_numerator // phase_count
         var left = base - radius
         var weight_row = weights + phase * kernel_width
         var acc: Float32 = 0.0
@@ -368,7 +386,7 @@ def mls_resample_f32(
                     acc += y[channel * n_in + source_index] * weight_row[k]
         dst[index] = acc
 
-    if count * kernel_width >= 262144:
+    if count >= 262144 and count * kernel_width >= 262144:
         var chunks = (count + 255) // 256
 
         @parameter
@@ -378,7 +396,7 @@ def mls_resample_f32(
             for index in range(first, last):
                 work_item(index)
 
-        map[work_chunk](chunks)
+        parallelize[work_chunk](chunks)
     else:
         for index in range(count):
             work_item(index)
@@ -485,7 +503,7 @@ def mls_beat_dp(
             for i in range(first, last):
                 local_score(i)
 
-        map[local_chunk](chunks)
+        parallelize[local_chunk](chunks)
     else:
         for i in range(n):
             local_score(i)

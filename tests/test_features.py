@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 
 import mojolibrosa as ml
+from mojolibrosa.feature import _project
 
 
 @pytest.fixture(scope="module")
@@ -62,6 +63,19 @@ def test_projection_simd_tail_parity(dtype):
     theirs = librosa.feature.melspectrogram(S=S, sr=16000, n_mels=17)
     tolerance = 2e-6 if dtype == np.float32 else 1e-12
     assert np.allclose(ours, theirs, rtol=tolerance, atol=tolerance)
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_projection_sparse_bounds_and_empty_row(dtype):
+    rng = np.random.default_rng(37)
+    source = rng.normal(size=(19, 13)).astype(dtype)
+    matrix = np.zeros((3, 19), dtype=dtype)
+    matrix[1, 4:11] = rng.normal(size=7)
+    matrix[2] = rng.normal(size=19)
+    ours = _project(matrix, source)
+    expected = matrix @ source
+    tolerance = 2e-6 if dtype == np.float32 else 1e-12
+    assert np.allclose(ours, expected, rtol=tolerance, atol=tolerance)
 
 
 def test_mfcc_from_audio_parity(audio):

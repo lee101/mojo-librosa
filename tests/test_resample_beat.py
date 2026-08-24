@@ -34,7 +34,7 @@ def test_resample_multichannel_axis_and_scale():
     assert np.allclose(ours[100:-100], theirs[100:-100], rtol=2e-3, atol=2e-4)
 
 
-@pytest.mark.parametrize("n_in", [4074, 4077])
+@pytest.mark.parametrize("n_in", [786429, 786430])
 def test_resample_parallel_threshold_and_simd_tail(n_in):
     sr = 48000
     t = np.arange(n_in) / sr

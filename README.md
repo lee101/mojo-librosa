@@ -96,11 +96,21 @@ sets. Results are cast back to librosa-compatible float32/complex64 when the
 input is float32.
 
 The resampler caches bounded rational-phase Hann-windowed sinc tables, then
-evaluates each output with a SIMD dot product and parallelizes large outputs.
+evaluates each output with a SIMD dot product and parallelizes only very large
+outputs. Exact integer decimation avoids per-output phase division. Mel
+projection bounds each filter to its nonzero frequency support before running
+the SIMD time-axis loop.
 Unusual rates which would require a large phase table retain the scalar
 fallback. The beat tracker precomputes its Gaussian and transition penalties,
 vectorizes local scores, parallelizes them above a threshold, and preserves
 the sequential Ellis dynamic-programming recurrence.
+
+No GPU path is shipped. A light STFT GPU prototype used about 19 MB of device
+memory and was measured through the locked benchmark at 12.495 ms, versus
+5.003 ms for the final CPU path. Transfer, launch, and global-memory FFT costs
+outweighed the available parallelism. The remaining candidates either have low
+arithmetic intensity after sparse support pruning or complete in about 1 ms on
+CPU, where launch overhead dominates.
 
 ## Tests
 
@@ -109,7 +119,7 @@ pixi run build
 pixi run test
 ```
 
-The current suite contains 67 parity, boundary-safety, and behavior tests using the real
+The current suite contains 69 parity, boundary-safety, and behavior tests using the real
 upstream package.
 
 ## Benchmarks
@@ -117,17 +127,17 @@ upstream package.
 Run benchmarks only through `pixi run bench`; the task uses a machine-wide
 lock. Lower time is better, and speedup is `librosa / mojolibrosa`.
 
-Measured by `pixi run bench` on this machine on July 28, 2026. Each cell is the
+Measured by `pixi run bench` on this machine on August 24, 2026. Each cell is the
 best of five warmed runs. Machine: Intel Xeon E5-2697 v4 at 2.30 GHz, Linux
 6.8.0-136-generic, Python 3.13.14.
 
 | Case | mojolibrosa | librosa | Speedup |
 |---|---:|---:|---:|
-| STFT, 12 s, n_fft=2048 | 4.609 ms | 18.204 ms | 3.95x |
-| Mel projection, 128 x 600 | 5.402 ms | 43.046 ms | 7.97x |
-| MFCC DCT, 20 x 1500 | 1.309 ms | 1.755 ms | 1.34x |
-| Resample, 5 s, 48 kHz to 16 kHz | 5.862 ms | 2.777 ms | 0.47x |
-| Beat DP, 20k onset frames, fixed BPM | 2.779 ms | 18.115 ms | 6.52x |
+| STFT, 12 s, n_fft=2048 | 5.003 ms | 12.143 ms | 2.43x |
+| Mel projection, 128 x 600 | 6.988 ms | 28.993 ms | 4.15x |
+| MFCC DCT, 20 x 1500 | 0.954 ms | 1.468 ms | 1.54x |
+| Resample, 5 s, 48 kHz to 16 kHz | 4.011 ms | 2.689 ms | 0.67x |
+| Beat DP, 20k onset frames, fixed BPM | 2.383 ms | 10.512 ms | 4.41x |
 
 ## License
 
