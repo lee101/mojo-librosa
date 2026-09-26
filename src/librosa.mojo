@@ -1,6 +1,6 @@
 """Numerical kernels for mojo-librosa's C ABI."""
 
-from std.algorithm import parallelize
+from max.algorithm import parallelize
 from std.math import cos, exp, floor, log, pow, sin, sqrt
 from std.runtime import initialize_runtime
 from std.sys.info import simd_width_of as simdwidthof
@@ -10,6 +10,7 @@ comptime F32Ptr = UnsafePointer[Float32, AnyOrigin[mut=True]]
 comptime IPtr = UnsafePointer[Int64, AnyOrigin[mut=True]]
 comptime W = simdwidthof[DType.float64]()
 comptime W32 = simdwidthof[DType.float32]()
+comptime MAX_WORKERS = 16
 comptime PI = 3.14159265358979323846264338327950288
 
 
@@ -97,12 +98,11 @@ def mls_stft(
     var dst = Ptr(unsafe_from_address=dst_addr)
     var count = channels * n_frames
 
-    @parameter
-    def work(index: Int):
+    def work(index: Int) {imm}:
         stft_frame(y, window, dst, index, n_samples, n_frames, n_fft, hop_length)
 
     if count * n_fft >= 131072:
-        parallelize[work](count)
+        parallelize(work, count, min(count, MAX_WORKERS))
     else:
         for index in range(count):
             work(index)
@@ -199,12 +199,11 @@ def mls_project(
     var dst = Ptr(unsafe_from_address=dst_addr)
     var count = batch * rows
 
-    @parameter
-    def work(index: Int):
+    def work(index: Int) {imm}:
         project_row(matrix, src, dst, index, rows, inner, columns)
 
     if count >= 64 and inner * columns >= 32768:
-        parallelize[work](count)
+        parallelize(work, count, min(count, MAX_WORKERS))
     else:
         for index in range(count):
             work(index)
@@ -225,12 +224,11 @@ def mls_project_f32(
     var dst = F32Ptr(unsafe_from_address=dst_addr)
     var count = batch * rows
 
-    @parameter
-    def work(index: Int):
+    def work(index: Int) {imm}:
         project_row_f32(matrix, src, dst, index, rows, inner, columns)
 
     if count >= 64 and inner * columns >= 32768:
-        parallelize[work](count)
+        parallelize(work, count, min(count, MAX_WORKERS))
     else:
         for index in range(count):
             work(index)
@@ -260,8 +258,7 @@ def mls_resample(
     var kernel_width = 2 * radius + 1
     var count = channels * n_out
 
-    @parameter
-    def work_item(index: Int):
+    def work_item(index: Int) {imm}:
         var channel = index // n_out
         var i = index - channel * n_out
         var phase = 0
@@ -309,14 +306,13 @@ def mls_resample(
     if count >= 262144 and count * kernel_width >= 262144:
         var chunks = (count + 255) // 256
 
-        @parameter
-        def work_chunk(chunk: Int):
+        def work_chunk(chunk: Int) {imm}:
             var first = chunk * 256
             var last = min(first + 256, count)
             for index in range(first, last):
                 work_item(index)
 
-        parallelize[work_chunk](chunks)
+        parallelize(work_chunk, chunks, min(chunks, MAX_WORKERS))
     else:
         for index in range(count):
             work_item(index)
@@ -340,8 +336,7 @@ def mls_resample_f32(
     var kernel_width = 2 * radius + 1
     var count = channels * n_out
 
-    @parameter
-    def work_item(index: Int):
+    def work_item(index: Int) {imm}:
         var channel = index // n_out
         var i = index - channel * n_out
         var phase = 0
@@ -389,14 +384,13 @@ def mls_resample_f32(
     if count >= 262144 and count * kernel_width >= 262144:
         var chunks = (count + 255) // 256
 
-        @parameter
-        def work_chunk(chunk: Int):
+        def work_chunk(chunk: Int) {imm}:
             var first = chunk * 256
             var last = min(first + 256, count)
             for index in range(first, last):
                 work_item(index)
 
-        parallelize[work_chunk](chunks)
+        parallelize(work_chunk, chunks, min(chunks, MAX_WORKERS))
     else:
         for index in range(count):
             work_item(index)
@@ -463,8 +457,7 @@ def mls_beat_dp(
             var z = Float64(k - period) * 32.0 / Float64(period)
             cum[k] = exp(-0.5 * z * z)
 
-    @parameter
-    def local_score(i: Int):
+    def local_score(i: Int) {imm}:
         var score = 0.0
         var first = i - period
         if first < 0:
@@ -496,14 +489,13 @@ def mls_beat_dp(
     if n * kernel_width >= 131072:
         var chunks = (n + 255) // 256
 
-        @parameter
-        def local_chunk(chunk: Int):
+        def local_chunk(chunk: Int) {imm}:
             var first = chunk * 256
             var last = min(first + 256, n)
             for i in range(first, last):
                 local_score(i)
 
-        parallelize[local_chunk](chunks)
+        parallelize(local_chunk, chunks, min(chunks, MAX_WORKERS))
     else:
         for i in range(n):
             local_score(i)
