@@ -5,9 +5,9 @@ from std.math import cos, exp, floor, log, pow, sin, sqrt
 from std.runtime import initialize_runtime
 from std.sys.info import simd_width_of as simdwidthof
 
-comptime Ptr = UnsafePointer[Float64, AnyOrigin[mut=True]]
-comptime F32Ptr = UnsafePointer[Float32, AnyOrigin[mut=True]]
-comptime IPtr = UnsafePointer[Int64, AnyOrigin[mut=True]]
+comptime Ptr = Pointer[Float64, AnyOrigin[mut=True]]
+comptime F32Ptr = Pointer[Float32, AnyOrigin[mut=True]]
+comptime IPtr = Pointer[Int64, AnyOrigin[mut=True]]
 comptime W = simdwidthof[DType.float64]()
 comptime W32 = simdwidthof[DType.float32]()
 comptime MAX_WORKERS = 16
@@ -137,7 +137,7 @@ def project_row(
         while c + W <= columns:
             dst_row.store(
                 c,
-                dst_row.load[width=W](c) + vw * src_row.load[width=W](c),
+                dst_row.unsafe_load[width=W](c) + vw * src_row.unsafe_load[width=W](c),
             )
             c += W
         while c < columns:
@@ -174,8 +174,8 @@ def project_row_f32(
         while c + W32 <= columns:
             dst_row.store(
                 c,
-                dst_row.load[width=W32](c)
-                + vw * src_row.load[width=W32](c),
+                dst_row.unsafe_load[width=W32](c)
+                + vw * src_row.unsafe_load[width=W32](c),
             )
             c += W32
         while c < columns:
@@ -278,18 +278,18 @@ def mls_resample(
             var k = 0
             while k + 2 * W <= kernel_width:
                 vacc0 += (
-                    source_row.load[width=W](k)
-                    * weight_row.load[width=W](k)
+                    source_row.unsafe_load[width=W](k)
+                    * weight_row.unsafe_load[width=W](k)
                 )
                 vacc1 += (
-                    source_row.load[width=W](k + W)
-                    * weight_row.load[width=W](k + W)
+                    source_row.unsafe_load[width=W](k + W)
+                    * weight_row.unsafe_load[width=W](k + W)
                 )
                 k += 2 * W
             while k + W <= kernel_width:
                 vacc0 += (
-                    source_row.load[width=W](k)
-                    * weight_row.load[width=W](k)
+                    source_row.unsafe_load[width=W](k)
+                    * weight_row.unsafe_load[width=W](k)
                 )
                 k += W
             acc = (vacc0 + vacc1).reduce_add()
@@ -356,18 +356,18 @@ def mls_resample_f32(
             var k = 0
             while k + 2 * W32 <= kernel_width:
                 vacc0 += (
-                    source_row.load[width=W32](k)
-                    * weight_row.load[width=W32](k)
+                    source_row.unsafe_load[width=W32](k)
+                    * weight_row.unsafe_load[width=W32](k)
                 )
                 vacc1 += (
-                    source_row.load[width=W32](k + W32)
-                    * weight_row.load[width=W32](k + W32)
+                    source_row.unsafe_load[width=W32](k + W32)
+                    * weight_row.unsafe_load[width=W32](k + W32)
                 )
                 k += 2 * W32
             while k + W32 <= kernel_width:
                 vacc0 += (
-                    source_row.load[width=W32](k)
-                    * weight_row.load[width=W32](k)
+                    source_row.unsafe_load[width=W32](k)
+                    * weight_row.unsafe_load[width=W32](k)
                 )
                 k += W32
             acc = (vacc0 + vacc1).reduce_add()
@@ -472,8 +472,8 @@ def mls_beat_dp(
             var k = 0
             while k + W <= length:
                 vacc += (
-                    onset.load[width=W](first + k)
-                    * cum.load[width=W](kernel_offset + k)
+                    onset.unsafe_load[width=W](first + k)
+                    * cum.unsafe_load[width=W](kernel_offset + k)
                 )
                 k += W
             score = vacc.reduce_add()
